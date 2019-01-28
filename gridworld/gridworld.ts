@@ -49,7 +49,7 @@ module Helpers {
         }
     }
 
-    export var drawGridObjective = (svg, objectives) => {
+    export var drawGridObjective = (svg, objectives, color = "grey", opacity = 1) => {
         var gridObjectives = svg.append("g").attr("class", "gridObjectives");
 
         objectives.forEach((obj, index) => {
@@ -61,11 +61,11 @@ module Helpers {
             { "x": obj.x + offset, "y": obj.y },
             { "x": obj.x + offset, "y": obj.y + offset },
             { "x": obj.x, "y": obj.y + offset }
-            ], "grey")
+            ], color, opacity)
         })
     }
 
-    export var drawObjective = (svg, points, fillColour) => {
+    export var drawObjective = (svg, points, fillColour, opacity) => {
         svg.append("polygon")
             .data([points])
             .attr("points", function (d) {
@@ -73,7 +73,9 @@ module Helpers {
                     return [d.x, d.y].join(",");
                 }).join(" ");
             })
-            .attr("fill", fillColour);
+            .attr("fill", fillColour)
+            .attr("opacity", opacity);
+
 
     }
 
@@ -159,7 +161,6 @@ module Helpers {
         states.forEach((state, index) => {
             coords.push({ x: parseInt("" + state / matrixSize), y: state % matrixSize })
         });
-        console.log(coords)
         return coords;
 
     }
@@ -308,10 +309,11 @@ class DynamicProgramming {
     }
 
     ////Policy Evaluation/////
-    public EvaluatePolicy(environment, policy, discount_factor = 1.0, theta = 0.1) {
+    public EvaluatePolicy(environment, policy, discount_factor = 1.0, theta = 0.01) {
         var V = Helpers.populateArray(this.numberOfStates, 0)
         var itteration = 0;
         var totalTimeout = 0;
+        var maxState = 1;
         //Repeat until convergance
         var itterate = () => {
             var delta = 0;
@@ -323,26 +325,32 @@ class DynamicProgramming {
                     v += action_probability * stateTuple[0] * (stateTuple[2] + discount_factor * V[stateTuple[1]]);
                 });
                 delta = Math.max(delta, Math.abs(v - V[s]))
+                if (v < maxState) maxState = v;
                 V[s] = v
             }
 
-            setTimeout((data, itteration) => {
+            setTimeout((data, itteration, maxState) => {
                 this.dpSvg.selectAll("text").remove();
+                this.dpSvg.selectAll("polygon").remove();
+
                 var _V = data;
                 var _i = itteration;
+                for (var s = 0; s < this.numberOfStates; s++) {
+                }
+
                 _V.forEach((state, index) => {
-                    var row = parseInt("" + index / Math.sqrt(this.numberOfStates));
-                    var x = index / Math.sqrt(this.numberOfStates);
-                    Helpers.drawText(this.dpSvg, (index % Math.sqrt(this.numberOfStates)) * offset + offset / 2,
+                    Helpers.drawGridObjective(this.dpSvg, Helpers.convertStatesToCoords([index], matrixSize), "green", 0.6 - (Math.abs(state / maxState) * 0.6))
+
+                    var row = parseInt("" + index / matrixSize);
+                    Helpers.drawText(this.dpSvg, (index % matrixSize) * offset + offset / 2,
                         row * offset + offset / 2, Number(state).toFixed(2))
                 })
-                Helpers.drawText(this.dpSvg, Math.sqrt(this.numberOfStates) * offset / 2, Math.sqrt(this.numberOfStates) * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta)
-                Helpers.drawText(this.dpSvg, Math.sqrt(this.numberOfStates) * offset / 2, Math.sqrt(this.numberOfStates) * offset + offset, _i)
+                Helpers.drawText(this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta)
+                Helpers.drawText(this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset, _i)
 
-            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration)
+            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration, maxState)
 
             this.policyEvaluationDelay = totalTimeout;
-            console.log(this.policyEvaluationDelay)
 
             itteration++;
             if (delta > theta) {
@@ -391,9 +399,7 @@ class DynamicProgramming {
                 chosenA = Helpers.Argmax(policy[state])
 
                 actionValues = oneStepLookahead(state, environment, V)
-                console.log("actionValues", state, actionValues)
                 bestA = Helpers.Argmax(actionValues)
-                console.log("best a", bestA, state, policy)
 
                 if (chosenA == bestA) {
                     stable = true;

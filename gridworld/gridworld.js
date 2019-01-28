@@ -40,7 +40,9 @@ var Helpers;
             Helpers.drawLine(gridLinesContainer, x, y + offset * j, x + length, y + offset * j, "grey");
         }
     };
-    Helpers.drawGridObjective = function (svg, objectives) {
+    Helpers.drawGridObjective = function (svg, objectives, color, opacity) {
+        if (color === void 0) { color = "grey"; }
+        if (opacity === void 0) { opacity = 1; }
         var gridObjectives = svg.append("g").attr("class", "gridObjectives");
         objectives.forEach(function (obj, index) {
             obj.x *= offset;
@@ -49,10 +51,10 @@ var Helpers;
                 { "x": obj.x + offset, "y": obj.y },
                 { "x": obj.x + offset, "y": obj.y + offset },
                 { "x": obj.x, "y": obj.y + offset }
-            ], "grey");
+            ], color, opacity);
         });
     };
-    Helpers.drawObjective = function (svg, points, fillColour) {
+    Helpers.drawObjective = function (svg, points, fillColour, opacity) {
         svg.append("polygon")
             .data([points])
             .attr("points", function (d) {
@@ -60,7 +62,8 @@ var Helpers;
                 return [d.x, d.y].join(",");
             }).join(" ");
         })
-            .attr("fill", fillColour);
+            .attr("fill", fillColour)
+            .attr("opacity", opacity);
     };
     Helpers.appendArrowMarker = function (svg) {
         svg.append("svg:defs").append("svg:marker")
@@ -139,7 +142,6 @@ var Helpers;
         states.forEach(function (state, index) {
             coords.push({ x: parseInt("" + state / matrixSize), y: state % matrixSize });
         });
-        console.log(coords);
         return coords;
     };
 })(Helpers || (Helpers = {}));
@@ -258,10 +260,11 @@ var DynamicProgramming = /** @class */ (function () {
     DynamicProgramming.prototype.EvaluatePolicy = function (environment, policy, discount_factor, theta) {
         var _this = this;
         if (discount_factor === void 0) { discount_factor = 1.0; }
-        if (theta === void 0) { theta = 0.1; }
+        if (theta === void 0) { theta = 0.01; }
         var V = Helpers.populateArray(this.numberOfStates, 0);
         var itteration = 0;
         var totalTimeout = 0;
+        var maxState = 1;
         //Repeat until convergance
         var itterate = function () {
             var delta = 0;
@@ -273,22 +276,26 @@ var DynamicProgramming = /** @class */ (function () {
                     v += action_probability * stateTuple[0] * (stateTuple[2] + discount_factor * V[stateTuple[1]]);
                 });
                 delta = Math.max(delta, Math.abs(v - V[s]));
+                if (v < maxState)
+                    maxState = v;
                 V[s] = v;
             }
-            setTimeout(function (data, itteration) {
+            setTimeout(function (data, itteration, maxState) {
                 _this.dpSvg.selectAll("text").remove();
+                _this.dpSvg.selectAll("polygon").remove();
                 var _V = data;
                 var _i = itteration;
+                for (var s = 0; s < _this.numberOfStates; s++) {
+                }
                 _V.forEach(function (state, index) {
-                    var row = parseInt("" + index / Math.sqrt(_this.numberOfStates));
-                    var x = index / Math.sqrt(_this.numberOfStates);
-                    Helpers.drawText(_this.dpSvg, (index % Math.sqrt(_this.numberOfStates)) * offset + offset / 2, row * offset + offset / 2, Number(state).toFixed(2));
+                    Helpers.drawGridObjective(_this.dpSvg, Helpers.convertStatesToCoords([index], matrixSize), "green", 0.6 - (Math.abs(state / maxState) * 0.6));
+                    var row = parseInt("" + index / matrixSize);
+                    Helpers.drawText(_this.dpSvg, (index % matrixSize) * offset + offset / 2, row * offset + offset / 2, Number(state).toFixed(2));
                 });
-                Helpers.drawText(_this.dpSvg, Math.sqrt(_this.numberOfStates) * offset / 2, Math.sqrt(_this.numberOfStates) * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta);
-                Helpers.drawText(_this.dpSvg, Math.sqrt(_this.numberOfStates) * offset / 2, Math.sqrt(_this.numberOfStates) * offset + offset, _i);
-            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration);
+                Helpers.drawText(_this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta);
+                Helpers.drawText(_this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset, _i);
+            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration, maxState);
             _this.policyEvaluationDelay = totalTimeout;
-            console.log(_this.policyEvaluationDelay);
             itteration++;
             if (delta > theta) {
                 return itterate();
@@ -328,9 +335,7 @@ var DynamicProgramming = /** @class */ (function () {
             V.forEach(function (value, state) {
                 chosenA = Helpers.Argmax(policy[state]);
                 actionValues = oneStepLookahead(state, environment, V);
-                console.log("actionValues", state, actionValues);
                 bestA = Helpers.Argmax(actionValues);
-                console.log("best a", bestA, state, policy);
                 if (chosenA == bestA) {
                     stable = true;
                 }
