@@ -2,7 +2,7 @@ declare var d3;
 
 /////////Config var///////
 var matrixSize = 10;
-var offset = 45;
+var offset = 40;
 //Create objectives and position them on the grid. The goal of reinforcement learning client would be to pick them up before it Receives  in a matrixSize*matrixSize array;
 var objectives = [{ x: 0, y: 14 }, { x: 1, y: 6 }, { x: 3, y: 2 }, { x: 4, y: 12 }, { x: 7, y: 2 }, { x: 7, y: 6 }, { x: 9, y: 14 }, { x: 12, y: 8 }, { x: 14, y: 12 }, { x: 0, y: 14 }];
 
@@ -225,6 +225,7 @@ class DynamicProgramming {
     private numberOfStates;
     public dpSvg = Helpers.createSvg();
     public policySvg = Helpers.createSvg();
+    public valueItterationSvg = Helpers.createSvg();
 
     public policyEvaluationDelay = 0;
 
@@ -238,6 +239,9 @@ class DynamicProgramming {
         Helpers.appendArrowMarker(this.policySvg)
         Helpers.drawGridLines(this.policySvg, matrixSize);
 
+
+        Helpers.appendArrowMarker(this.valueItterationSvg)
+        Helpers.drawGridLines(this.valueItterationSvg, matrixSize);
         //Helpers.drawGridObjective(dpSvg, objectives);
 
     }
@@ -308,6 +312,16 @@ class DynamicProgramming {
         return [up, right, down, left]
     }
 
+
+    //Helper function to calculate the value for all action in a given state.
+    public oneStepLookahead = (state, environment, V, discount_factor) => {
+        var A = Helpers.populateArray(this.numberOfActions, 0);
+        for (let action = 0; action < this.numberOfActions; action++) {
+            var stateTuple = environment[state][action];
+            A[action] += stateTuple[0] * (stateTuple[2] + discount_factor * V[stateTuple[1]]);
+        }
+        return A;
+    }
     ////Policy Evaluation/////
     public EvaluatePolicy(environment, policy, discount_factor = 1.0, theta = 0.01) {
         var V = Helpers.populateArray(this.numberOfStates, 0)
@@ -331,7 +345,7 @@ class DynamicProgramming {
 
             setTimeout((data, itteration, maxState) => {
                 this.dpSvg.selectAll("text").remove();
-                this.dpSvg.selectAll("polygon").remove();
+                this.dpSvg.selectAll(".gridObjectives").remove();
 
                 var _V = data;
                 var _i = itteration;
@@ -368,15 +382,7 @@ class DynamicProgramming {
     public ImprovePolicy(environment, discount_factor = 1.0, drawText = false) {
 
 
-        //Helper function to calculate the value for all action in a given state.
-        var oneStepLookahead = (state, environment, V) => {
-            var A = Helpers.populateArray(this.numberOfActions, 0);
-            for (let action = 0; action < this.numberOfActions; action++) {
-                var stateTuple = environment[state][action];
-                A[action] += stateTuple[0] * (stateTuple[2] + discount_factor * V[stateTuple[1]]);
-            }
-            return A;
-        }
+
 
         var policy = Helpers.populateMatrix(this.numberOfStates, this.numberOfActions, 1 / this.numberOfActions)
 
@@ -398,7 +404,7 @@ class DynamicProgramming {
 
                 chosenA = Helpers.Argmax(policy[state])
 
-                actionValues = oneStepLookahead(state, environment, V)
+                actionValues = this.oneStepLookahead(state, environment, V, discount_factor)
                 bestA = Helpers.Argmax(actionValues)
 
                 if (chosenA == bestA) {
@@ -426,21 +432,68 @@ class DynamicProgramming {
         return itterate()
     }
 
+    public ValueIteration(environment, theta = 0.0001, discount_factor = 1.0) {
+        var V = Helpers.populateArray(this.numberOfStates, 0);
+        while (true) {
+            var delta = 0
+            this.valueItterationSvg.selectAll("text").remove();
+            this.valueItterationSvg.selectAll(".gridObjectives").remove();
+            var maxState = -matrixSize;
+            for (var s = 0; s < this.numberOfStates; s++) {
+                //Do a one - step lookahead to find the best action
+                var A = this.oneStepLookahead(s, environment, V, discount_factor);
+                
+                var best_action_value = Math.max(...A)
+                // Calculate delta across all states seen so far
+                delta = Math.max(delta, Math.abs(best_action_value - V[s]))
+                // Update the value function.Ref: Sutton book eq. 4.10.
+                V[s] = best_action_value; 
+                var row = parseInt("" + s / matrixSize);
+                if(V[s] < maxState) maxState = V[s];
+                Helpers.drawGridObjective(this.valueItterationSvg, Helpers.convertStatesToCoords([s], matrixSize), "green", 0.6 - (Math.abs(V[s] / maxState) * 0.6))
+                Helpers.drawText(this.valueItterationSvg, (s % matrixSize) * offset + offset / 2, row * offset + offset / 2, V[s])
+            }
+            // Check if we can stop
+            
+            if (delta < theta) break;
+        }
+
+
+        // Create a deterministic policy using the optimal value function
+        var policy = Helpers.populateMatrix(this.numberOfStates, this.numberOfActions, 0);
+        this.valueItterationSvg.selectAll("path").remove();
+        for (var s = 0; s < this.numberOfStates; s++) {
+            //One step lookahead to find the best action for this state
+            var A = this.oneStepLookahead(s, environment, V, discount_factor);
+            var best_action = Helpers.Argmax(A);
+            // Always take the best action
+            policy[s][best_action] = 1.0;
+            setTimeout((state, s) => {
+                console.log(state, s)
+                    Helpers.drawArrows(this.valueItterationSvg, s, matrixSize, policy[s])
+            }, 22, policy[s], s)
+        }
+        return { "policy": policy, "V": V }
+    }
+
 }
 var DP;
 window.onload = (e) => {
     //new NearestNeighbour();
-
     var noOfStates = matrixSize * matrixSize, noOfActions = 4;
     var random_policy = Helpers.populateMatrix(noOfStates, noOfActions, 1 / noOfActions)
 
     DP = new DynamicProgramming(noOfActions, noOfStates);
 
+
     var terminalStates = [0, 33, noOfStates - 1];
     var environment = DP.createTransitionList(noOfStates, 4, terminalStates, 1, DP.transitionFunction);
 
+    console.log("Value iteration", DP.ValueIteration(environment))
+
     Helpers.drawGridObjective(DP.dpSvg, Helpers.convertStatesToCoords(terminalStates, matrixSize))
     Helpers.drawGridObjective(DP.policySvg, Helpers.convertStatesToCoords(terminalStates, matrixSize))
+    Helpers.drawGridObjective(DP.valueItterationSvg, Helpers.convertStatesToCoords(terminalStates, matrixSize))
 
     //var evaluatedPolicy = DP.EvaluatePolicy(environment, random_policy);
 
