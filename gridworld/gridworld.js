@@ -40,10 +40,11 @@ var Helpers;
             Helpers.drawLine(gridLinesContainer, x, y + offset * j, x + length, y + offset * j, "grey");
         }
     };
-    Helpers.drawGridObjective = function (svg, objectives, color, opacity) {
+    Helpers.drawGridObjective = function (svg, objectives, color, opacity, className) {
         if (color === void 0) { color = "grey"; }
         if (opacity === void 0) { opacity = 1; }
-        var gridObjectives = svg.append("g").attr("class", "gridObjectives");
+        if (className === void 0) { className = "gridObjectives"; }
+        var gridObjectives = svg.append("g").attr("class", className);
         objectives.forEach(function (obj, index) {
             obj.x *= offset;
             obj.y *= offset;
@@ -106,10 +107,12 @@ var Helpers;
         });
         return;
     };
-    Helpers.drawText = function (svg, x, y, text) {
+    Helpers.drawText = function (svg, x, y, text, className) {
+        if (className === void 0) { className = "text"; }
         return svg.append("text")
             .attr("x", x)
             .attr("y", y)
+            .attr("class", className)
             .text(text)
             .attr("font-family", "sans-serif")
             .attr("font-size", "14px")
@@ -277,6 +280,7 @@ var DynamicProgramming = /** @class */ (function () {
         var _this = this;
         if (discount_factor === void 0) { discount_factor = 1.0; }
         if (theta === void 0) { theta = 0.01; }
+        console.log(environment);
         var V = Helpers.populateArray(this.numberOfStates, 0);
         var itteration = 0;
         var totalTimeout = 0;
@@ -310,7 +314,7 @@ var DynamicProgramming = /** @class */ (function () {
                 });
                 Helpers.drawText(_this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta);
                 Helpers.drawText(_this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset, _i);
-            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration, maxState);
+            }, totalTimeout += 20, JSON.parse(JSON.stringify(V)), itteration, maxState);
             _this.policyEvaluationDelay = totalTimeout;
             itteration++;
             if (delta > theta) {
@@ -344,8 +348,8 @@ var DynamicProgramming = /** @class */ (function () {
                 chosenA = Helpers.Argmax(policy[state]);
                 actionValues = _this.oneStepLookahead(state, environment, V, discount_factor);
                 bestA = Helpers.Argmax(actionValues);
-                if (chosenA == bestA) {
-                    stable = true;
+                if (chosenA != bestA) {
+                    stable = false;
                 }
                 policy[state] = Helpers.populateArray(_this.numberOfActions, 0);
                 policy[state][bestA] = 1;
@@ -370,9 +374,9 @@ var DynamicProgramming = /** @class */ (function () {
         var V = Helpers.populateArray(this.numberOfStates, 0);
         var delay = 0;
         var lastItteration = 0;
+        var maxState = -1;
         while (true) {
             var delta = 0;
-            var maxState = 0.01;
             console.log("while loop");
             for (var s = 0; s < this.numberOfStates; s++) {
                 //Do a one - step lookahead to find the best action
@@ -382,17 +386,17 @@ var DynamicProgramming = /** @class */ (function () {
                 delta = Math.max(delta, Math.abs(best_action_value - V[s]));
                 // Update the value function.Ref: Sutton book eq. 4.10.
                 V[s] = best_action_value;
+                setTimeout(function (_s, value, _lastItteration, _maxState) {
+                    //if (lastItteration != _lastItteration && _s == 0) {
+                    _this.valueItterationSvg.selectAll(".text" + _s).remove();
+                    //}
+                    _this.valueItterationSvg.selectAll(".gridObjectives" + _s).remove();
+                    var row = parseInt("" + _s / matrixSize);
+                    Helpers.drawText(_this.valueItterationSvg, (_s % matrixSize) * offset + offset / 2, row * offset + offset / 2, value, "text" + _s);
+                    Helpers.drawGridObjective(_this.valueItterationSvg, Helpers.convertStatesToCoords([_s], matrixSize), "green", 0.6 - (Math.abs(V[_s] / _maxState) * 0.6), "gridObjectives" + _s);
+                }, delay += 20, s, V[s], lastItteration, maxState);
                 if (V[s] < maxState)
                     maxState = V[s];
-                setTimeout(function (_s, value, _lastItteration, _maxState) {
-                    if (lastItteration != _lastItteration && _s == 0) {
-                        _this.valueItterationSvg.selectAll("text").remove();
-                        _this.valueItterationSvg.selectAll(".gridObjectives").remove();
-                    }
-                    var row = parseInt("" + _s / matrixSize);
-                    Helpers.drawGridObjective(_this.valueItterationSvg, Helpers.convertStatesToCoords([_s], matrixSize), "green", 0.6 - (Math.abs(V[_s] / _maxState) * 0.6));
-                    Helpers.drawText(_this.valueItterationSvg, (_s % matrixSize) * offset + offset / 2, row * offset + offset / 2, value);
-                }, delay += 13, s, V[s], lastItteration, maxState);
             }
             // Check if we can stop
             lastItteration++;
@@ -411,7 +415,7 @@ var DynamicProgramming = /** @class */ (function () {
             setTimeout(function (state, s) {
                 console.log(state, s);
                 Helpers.drawArrows(_this.valuePolicySvg, s, matrixSize, policy[s]);
-            }, delay += 3, policy[s], s);
+            }, delay += 13, policy[s], s);
         }
         return { "policy": policy, "V": V };
     };
@@ -434,6 +438,6 @@ window.onload = function (e) {
     console.time("ImprovePolicy");
     var improvedPolicy = DP.ImprovePolicy(environment);
     console.timeEnd("ImprovePolicy");
-    //console.log(improvedPolicy)
+    console.log("improvedPolicy", improvedPolicy);
     console.log(environment);
 };

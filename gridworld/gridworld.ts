@@ -49,8 +49,8 @@ module Helpers {
         }
     }
 
-    export var drawGridObjective = (svg, objectives, color = "grey", opacity = 1) => {
-        var gridObjectives = svg.append("g").attr("class", "gridObjectives");
+    export var drawGridObjective = (svg, objectives, color = "grey", opacity = 1, className = "gridObjectives") => {
+        var gridObjectives = svg.append("g").attr("class", className);
 
         objectives.forEach((obj, index) => {
 
@@ -75,8 +75,6 @@ module Helpers {
             })
             .attr("fill", fillColour)
             .attr("opacity", opacity);
-
-
     }
 
     export var appendArrowMarker = (svg) => {
@@ -121,10 +119,11 @@ module Helpers {
 
     }
 
-    export var drawText = (svg, x, y, text) => {
+    export var drawText = (svg, x, y, text, className = "text") => {
         return svg.append("text")
             .attr("x", x)
             .attr("y", y)
+            .attr("class", className)
             .text(text)
             .attr("font-family", "sans-serif")
             .attr("font-size", "14px")
@@ -329,6 +328,7 @@ class DynamicProgramming {
     }
     ////Policy Evaluation/////
     public EvaluatePolicy(environment, policy, discount_factor = 1.0, theta = 0.01) {
+        console.log(environment)
         var V = Helpers.populateArray(this.numberOfStates, 0)
         var itteration = 0;
         var totalTimeout = 0;
@@ -367,7 +367,7 @@ class DynamicProgramming {
                 Helpers.drawText(this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset / 2, "Delta: " + delta.toFixed(theta.toString().length) + "Theta: " + theta)
                 Helpers.drawText(this.dpSvg, matrixSize * offset / 2, matrixSize * offset + offset, _i)
 
-            }, totalTimeout += 30, JSON.parse(JSON.stringify(V)), itteration, maxState)
+            }, totalTimeout += 20, JSON.parse(JSON.stringify(V)), itteration, maxState)
 
             this.policyEvaluationDelay = totalTimeout;
 
@@ -385,9 +385,6 @@ class DynamicProgramming {
     }
 
     public ImprovePolicy(environment, discount_factor = 1.0, drawText = false) {
-
-
-
 
         var policy = Helpers.populateMatrix(this.numberOfStates, this.numberOfActions, 1 / this.numberOfActions)
 
@@ -412,8 +409,8 @@ class DynamicProgramming {
                 actionValues = this.oneStepLookahead(state, environment, V, discount_factor)
                 bestA = Helpers.Argmax(actionValues)
 
-                if (chosenA == bestA) {
-                    stable = true;
+                if (chosenA != bestA) {
+                    stable = false;
                 }
 
                 policy[state] = Helpers.populateArray(this.numberOfActions, 0);
@@ -441,9 +438,12 @@ class DynamicProgramming {
         var V = Helpers.populateArray(this.numberOfStates, 0);
         var delay = 0;
         var lastItteration = 0;
+        var maxState = -1;
+
+
+
         while (true) {
             var delta = 0
-            var maxState = 0.01;
 
             console.log("while loop")
             for (var s = 0; s < this.numberOfStates; s++) {
@@ -455,16 +455,19 @@ class DynamicProgramming {
                 delta = Math.max(delta, Math.abs(best_action_value - V[s]))
                 // Update the value function.Ref: Sutton book eq. 4.10.
                 V[s] = best_action_value;
-                if (V[s] < maxState) maxState = V[s];
                 setTimeout((_s, value, _lastItteration, _maxState) => {
-                    if (lastItteration != _lastItteration && _s == 0) {
-                        this.valueItterationSvg.selectAll("text").remove();
-                        this.valueItterationSvg.selectAll(".gridObjectives").remove();
-                    }
+                    //if (lastItteration != _lastItteration && _s == 0) {
+                        this.valueItterationSvg.selectAll(".text" + _s).remove();
+                    //}
+                    this.valueItterationSvg.selectAll(".gridObjectives" + _s).remove();
+
                     var row = parseInt("" + _s / matrixSize);
-                    Helpers.drawGridObjective(this.valueItterationSvg, Helpers.convertStatesToCoords([_s], matrixSize), "green", 0.6 - (Math.abs(V[_s] / _maxState) * 0.6))
-                    Helpers.drawText(this.valueItterationSvg, (_s % matrixSize) * offset + offset / 2, row * offset + offset / 2, value)
-                }, delay += 13, s, V[s], lastItteration, maxState)
+                    Helpers.drawText(this.valueItterationSvg, (_s % matrixSize) * offset + offset / 2, row * offset + offset / 2, value, "text" + _s)
+                    Helpers.drawGridObjective(this.valueItterationSvg, Helpers.convertStatesToCoords([_s], matrixSize), "green", 0.6 - (Math.abs(V[_s] / _maxState) * 0.6), "gridObjectives" + _s)
+
+                }, delay += 20, s, V[s], lastItteration, maxState)
+                if (V[s] < maxState) maxState = V[s];
+
             }
             // Check if we can stop
             lastItteration++;
@@ -476,6 +479,7 @@ class DynamicProgramming {
 
         // Create a deterministic policy using the optimal value function
         var policy = Helpers.populateMatrix(this.numberOfStates, this.numberOfActions, 0);
+    
         this.valueItterationSvg.selectAll("path").remove();
         for (var s = 0; s < this.numberOfStates; s++) {
             //One step lookahead to find the best action for this state
@@ -486,7 +490,7 @@ class DynamicProgramming {
             setTimeout((state, s) => {
                 console.log(state, s)
                 Helpers.drawArrows(this.valuePolicySvg, s, matrixSize, policy[s])
-            }, delay += 3, policy[s], s)
+            }, delay += 13, policy[s], s)
         }
         return { "policy": policy, "V": V }
     }
@@ -516,6 +520,6 @@ window.onload = (e) => {
     console.time("ImprovePolicy")
     var improvedPolicy = DP.ImprovePolicy(environment)
     console.timeEnd("ImprovePolicy")
-    //console.log(improvedPolicy)
+    console.log("improvedPolicy",improvedPolicy)
     console.log(environment)
 }
